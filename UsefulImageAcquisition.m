@@ -17,6 +17,9 @@ classdef UsefulImageAcquisition < handle
         imageStatisticsAxesHandle;
         startPreviewPushbuttonHandle;
         stopPreviewPushbuttonHandle;
+        roiStatusEditHandle;
+        roiPushbuttonHandle;
+        fullroiPushbuttonHandle;
         stretchContrastCheckboxHandle;
         exposureEditHandle;
         gainEditHandle;
@@ -65,6 +68,18 @@ classdef UsefulImageAcquisition < handle
             this.stopPreviewPushbuttonHandle.Position(1) = uiPanelPosition(1) + this.histogramAxesHandle.Position(3) - this.stopPreviewPushbuttonHandle.Position(3);
             
             uiPanelPosition = uiPanelPosition - [ 0 30 ];
+            this.roiStatusEditHandle = this.CreateStaticTextBox( ...
+                uiPanelPosition, ...
+                [ 'ROI: ', num2str( this.videoInputObject.ROIPosition ) ], ...
+                @( Source, EventData ) this.HandleExposureEditUpdate( Source, EventData )  );
+            
+            uiPanelPosition = uiPanelPosition - [ 0 30 ];
+            this.roiPushbuttonHandle = this.CreatePushButton( uiPanelPosition + [ 20 0 ], 'Select ROI', @( Source, EventData ) this.HandleRoiPushbutton( Source, EventData ) );
+            fullRoiButtonPosition = uiPanelPosition + [ this.roiPushbuttonHandle.Position(3) 0 ];
+            this.fullroiPushbuttonHandle = this.CreatePushButton( fullRoiButtonPosition, 'Full ROI', @( Source, EventData ) this.HandleFullRoiPushbutton( Source, EventData ) );
+            this.fullroiPushbuttonHandle.Position(1) = uiPanelPosition(1) + this.histogramAxesHandle.Position(3) - this.fullroiPushbuttonHandle.Position(3);
+            
+            uiPanelPosition = uiPanelPosition - [ 0 30 ];
             [ this.stretchContrastCheckboxHandle ] = this.CreateCheckbox( ...
                 uiPanelPosition, 'Stretch Contrast', @( Source, EventData ) [] );
             
@@ -105,6 +120,15 @@ classdef UsefulImageAcquisition < handle
                 'Position', editTextPosition, ...
                 'Callback', {CallbackFunctionHandle} );
            
+        end
+        
+        function StaticTextHandle = CreateStaticTextBox( this, Position, StaticText, CallbackFunctionHandle )
+            StaticTextHandle = uicontrol( ...
+                'Style', 'text', ...
+                'String', StaticText , ...
+                'Position', [ Position 200 200 ] );
+            staticTextUpdatedPosition = [ StaticTextHandle.Position(1:2) StaticTextHandle.Extent(3:4) ] + [ 0 0 50 0 ];
+            StaticTextHandle.Position = staticTextUpdatedPosition;
         end
         
         function [ checkboxHandle ] = CreateCheckbox( this, Position, StaticText, CallbackFunctionHandle )
@@ -184,12 +208,10 @@ classdef UsefulImageAcquisition < handle
                 [ 'Acquiring ' num2str( this.videoInputObject.FramesPerTrigger ) ' frames' ], ...
                 'AnchorPoint', 'center', 'BoxColor', [ 0 0 0 ], 'TextColor', [1 1 1 ], 'BoxOpacity', 0, 'FontSize', 20 );
             this.videoPreviewImageHandle.CData = uint8( 255 * acquiringImage );
-            this.videoInputObject.Timeout = this.videoInputSource.ExposureTimeAbs * this.videoInputObject.FramesPerTrigger * 1.5 / 1e6;
-            start( this.videoInputObject );
-            this.ImageData = getdata( this.videoInputObject );
+            this.AcquireFrames(  );
             thumbnailImage = uint8( zeros( this.imageSize ) );
             for ii = 1:9
-                thumb = imresize( this.ImageData(:, :, 1, max( 1, round( ii / size( this.ImageData, 4 ) ) ) ) / 16, 1/3 );
+                thumb = imresize( this.ImageData(:, :, 1, max( 1, round( ii / size( this.ImageData, 4 ) ) ) ) / 16, floor( ( this.imageSize ) ) / 3 );
                 [ y, x ] = ind2sub( [ 3 3 ], ii );
                 xRange = ( x - 1 ) * size( thumb, 2 ) + 1;
                 yRange = ( y - 1 ) * size( thumb, 1 ) + 1;
@@ -201,6 +223,31 @@ classdef UsefulImageAcquisition < handle
                 'Results available in the ''ImageData'' property of this instance', ...
                 'AnchorPoint', 'center', 'BoxColor', [ 0 0 0 ], 'TextColor', [1 1 1 ], 'BoxOpacity', 0.5, 'FontSize', 18 );
             this.videoPreviewImageHandle.CData = uint8( 255 * thumbnailImage );
+        end
+        
+        function AcquireFrames( this )
+            this.videoInputObject.Timeout = this.videoInputSource.ExposureTimeAbs * this.videoInputObject.FramesPerTrigger * 1.5 / 1e6;
+            start( this.videoInputObject );
+            this.ImageData = getdata( this.videoInputObject );
+        end
+        
+        function HandleRoiPushbutton( this, Source, EventData )
+            this.StopPreview();
+            currentImage = double( this.videoPreviewImageHandle.CData ) / 255;
+            thumbnailImage = insertText( ...
+                currentImage,  [ this.imageSize(2) / 2, 30 ], ...
+                'Drag a rectangle to select ROI', ...
+                'AnchorPoint', 'center', 'BoxColor', [ 0 0 0 ], 'TextColor', [1 1 1 ], 'BoxOpacity', 0.5, 'FontSize', 18 );
+            this.videoPreviewImageHandle.CData = uint8( 255 * thumbnailImage );
+            selectedRectangle = getrect( this.videoPreviewAxesHandle );
+            this.videoInputObject.ROIPosition = selectedRectangle;
+            this.StartPreview();
+        end
+        
+        function HandleFullRoiPushbutton( this, Source, EventData )
+            this.StopPreview();
+            this.videoInputObject.ROIPosition = [ 0 0 fliplr( this.imageSize ) ];
+            this.StartPreview();
         end
         
         function UpdateHistogram( this, ImageData )
@@ -235,14 +282,25 @@ classdef UsefulImageAcquisition < handle
         function UpdateLiveDisplay( this, obj, event, hImage)
             % update image preview
             if( ~this.stretchContrastCheckboxHandle.Value )
-                hImage.CData = event.Data;
+                latestImage = event.Data;
             else
-                hImage.CData = this.StretchContrast( event.Data );
+                latestImage = this.StretchContrast( event.Data );
             end
             
+            if( size( latestImage ) ~= this.imageSize )
+                magnification = min( this.imageSize ./ size( latestImage ) );
+               latestImage = imresize( latestImage, magnification ); 
+            end
+            
+            hImage.CData = latestImage;
             this.UpdateHistogram( event.Data );
+            this.UpdateRoiStatus();
             
             drawnow
+        end
+        
+        function UpdateRoiStatus( this )
+            this.roiStatusEditHandle.String = [ 'ROI: ' num2str( this.videoInputObject.ROIPosition ) ];
         end
                 
         function Utility( this )
@@ -268,3 +326,5 @@ classdef UsefulImageAcquisition < handle
 
     end
 end
+
+% vid.ROIPosition = [217 128 283 206];
