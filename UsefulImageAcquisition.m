@@ -1,6 +1,6 @@
 classdef UsefulImageAcquisition < handle
     properties
-        Adapter = 'gentl';
+        Adapter = 'gige';
         Mode = 'Mono12';
         NumberOfHistogramBins = 128;
         ImageData;
@@ -25,12 +25,15 @@ classdef UsefulImageAcquisition < handle
         gainEditHandle;
         acquirePushbuttonHandle;
         frameRateEditHandle;
-        actualFrameRateStaticTextHandle;
     end
     
     properties
         acquisitionPhase = 0;
         acquisitionTime;
+    end
+    
+    properties ( Dependent )
+        FrameRate;
     end
     
     methods
@@ -202,7 +205,6 @@ classdef UsefulImageAcquisition < handle
                 [ 'Acquiring ' num2str( this.videoInputObject.FramesPerTrigger ) ' frames' ], ...
                 'AnchorPoint', 'center', 'BoxColor', [ 0 0 0 ], 'TextColor', [1 1 1 ], 'BoxOpacity', 0, 'FontSize', 20 );
             this.videoPreviewImageHandle.CData = uint8( 255 * acquiringImage );
-            this.actualFrameRateStaticTextHandle.String = [ 'Maximum: ', num2str( this.videoInputSource.AcquisitionFrameRateLimit ) ];
 
             this.AcquireFrames(  );
             thumbnailImage = uint8( zeros( this.cameraResolution ) );
@@ -222,7 +224,7 @@ classdef UsefulImageAcquisition < handle
         end
         
         function AcquireFrames( this )
-            this.videoInputObject.Timeout = this.videoInputSource.ExposureTimeAbs * this.videoInputObject.FramesPerTrigger * 1.5 / 1e6;
+            this.videoInputObject.Timeout = max( this.videoInputSource.ExposureTimeAbs / 1e6, 1 / this.FrameRate ) * this.videoInputObject.FramesPerTrigger * 1.5;
             start( this.videoInputObject );
             this.ImageData = getdata( this.videoInputObject );
         end
@@ -404,6 +406,16 @@ classdef UsefulImageAcquisition < handle
 
         function Utility( this )
             foo = [];
+        end
+        
+        %% accessors and setters
+        
+        function set.FrameRate( this, Value )
+            this.videoInputSource.AcquisitionFrameRateAbs = Value;
+        end
+        
+        function Value = get.FrameRate( this )
+            Value = this.videoInputSource.AcquisitionFrameRateAbs;
         end
     end
     
