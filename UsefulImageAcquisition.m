@@ -25,6 +25,7 @@ classdef UsefulImageAcquisition < handle
         gainEditHandle;
         acquirePushbuttonHandle;
         frameRateEditHandle;
+        framesToAcquireEditHandle;
     end
     
     properties
@@ -33,7 +34,10 @@ classdef UsefulImageAcquisition < handle
     end
     
     properties ( Dependent )
+        Gain;
         FrameRate;
+        NumberOfFramesToAcquire;
+        Exposure;
     end
     
     methods
@@ -59,7 +63,7 @@ classdef UsefulImageAcquisition < handle
             this.videoInputObject = videoinput( this.Adapter, 1, this.Mode );
             this.videoInputSource = getselectedsource( this.videoInputObject );
             
-            this.videoInputObject.FramesPerTrigger = 1;
+            this.NumberOfFramesToAcquire = 1;
             this.cameraResolution = fliplr( this.videoInputObject.VideoResolution );
 
             % create the main figure
@@ -118,10 +122,10 @@ classdef UsefulImageAcquisition < handle
             
             % gain
             uiPanelPosition = uiPanelPosition - [ 0 30 ];
-            this.videoInputSource.Gain = 0;
+            this.Gain = 0;
             [ ~, this.gainEditHandle ] = this.CreateLabelEditTextBox( ...
                 uiPanelPosition, ...
-                'Gain (0-24):', num2str( this.videoInputSource.Gain ), ...
+                'Gain (0-24):', num2str( this.Gain ), ...
                 @( Source, EventData ) this.HandleGainEditUpdate( Source, EventData )  );            
             
             % frame rate
@@ -134,9 +138,9 @@ classdef UsefulImageAcquisition < handle
             
             % frames to acquire
             uiPanelPosition = uiPanelPosition - [ 0 30 ];
-            [ ~, this.gainEditHandle ] = this.CreateLabelEditTextBox( ...
+            [ ~, this.framesToAcquireEditHandle ] = this.CreateLabelEditTextBox( ...
                 uiPanelPosition, ...
-                'Number of Frames:', num2str( this.videoInputObject.FramesPerTrigger ), ...
+                'Number of Frames:', num2str( this.NumberOfFramesToAcquire ), ...
                 @( Source, EventData ) this.HandleFramesToAcquireEditUpdate( Source, EventData )  );
             
             % acquire button
@@ -186,15 +190,15 @@ classdef UsefulImageAcquisition < handle
             value = round( str2double( Source.String ) );
             value = max( 0, value );
             value = min( 24, value );
-            this.videoInputSource.Gain = value;
-            Source.String = num2str( this.videoInputSource.Gain );
+            this.Gain = value;
+            Source.String = num2str( this.Gain );
         end
         
         function HandleFramesToAcquireEditUpdate( this, Source, EventData )
             value = round( str2double( Source.String ) );
             value = max( 0, value );
-            this.videoInputObject.FramesPerTrigger = value;
-            Source.String = num2str( this.videoInputObject.FramesPerTrigger );
+            this.NumberOfFramesToAcquire = value;
+            Source.String = num2str( this.NumberOfFramesToAcquire );
         end
         
         function HandleAcquirePushbutton( this, Source, EventData )
@@ -202,7 +206,7 @@ classdef UsefulImageAcquisition < handle
             this.UpdateStatus(  );
             acquiringImage = insertText( ...
                 0.5 * ones( this.cameraResolution ), fliplr( this.cameraResolution ) / 2, ...
-                [ 'Acquiring ' num2str( this.videoInputObject.FramesPerTrigger ) ' frames' ], ...
+                [ 'Acquiring ' num2str( this.NumberOfFramesToAcquire ) ' frames' ], ...
                 'AnchorPoint', 'center', 'BoxColor', [ 0 0 0 ], 'TextColor', [1 1 1 ], 'BoxOpacity', 0, 'FontSize', 20 );
             this.videoPreviewImageHandle.CData = uint8( 255 * acquiringImage );
 
@@ -224,7 +228,7 @@ classdef UsefulImageAcquisition < handle
         end
         
         function AcquireFrames( this )
-            this.videoInputObject.Timeout = max( this.videoInputSource.ExposureTimeAbs / 1e6, 1 / this.FrameRate ) * this.videoInputObject.FramesPerTrigger * 1.5;
+            this.videoInputObject.Timeout = max( this.videoInputSource.ExposureTimeAbs / 1e6, 1 / this.FrameRate ) * this.NumberOfFramesToAcquire * 1.5;
             start( this.videoInputObject );
             this.ImageData = getdata( this.videoInputObject );
         end
@@ -238,7 +242,7 @@ classdef UsefulImageAcquisition < handle
                 'Drag a rectangle to select ROI', ...
                 'AnchorPoint', 'center', 'BoxColor', [ 0 0 0 ], 'TextColor', [1 1 1 ], 'BoxOpacity', 0.5, 'FontSize', 18 );
             this.DisplayPreviewImage( thumbnailImage );
-            selectedRectangle = getrect( this.videoPreviewAxesHandle );
+            selectedRectangle = max( getrect( this.videoPreviewAxesHandle ), [ 10 10 10 10 ] );
             thumbnailImage = insertText( ...
                 thumbnailImage,  [ this.cameraResolution(2) / 2, 30 ] + [ 0 40 ], ...
                 [ 'Selected ROI is ' num2str( selectedRectangle ) ' ... hang on a sec.' ], ...
@@ -408,7 +412,7 @@ classdef UsefulImageAcquisition < handle
             foo = [];
         end
         
-        %% accessors and setters
+        % accessors and setters
         
         function set.FrameRate( this, Value )
             this.videoInputSource.AcquisitionFrameRateAbs = Value;
@@ -417,6 +421,31 @@ classdef UsefulImageAcquisition < handle
         function Value = get.FrameRate( this )
             Value = this.videoInputSource.AcquisitionFrameRateAbs;
         end
+        
+        function set.Gain( this, Value )
+            this.videoInputSource.Gain = Value;
+        end
+        
+        function Value = get.Gain( this )
+            Value = this.videoInputSource.Gain;
+        end
+        
+        function set.NumberOfFramesToAcquire( this, Value )
+            this.videoInputObject.FramesPerTrigger = Value;
+        end
+        
+        function Value = get.NumberOfFramesToAcquire( this )
+            Value = this.videoInputObject.FramesPerTrigger;
+        end
+
+        function set.Exposure( this, Value )
+            this.videoInputSource.ExposureTimeAbs = Value;
+        end
+        
+        function Value = get.Exposure( this )
+            Value = this.videoInputSource.ExposureTimeAbs;
+        end
+        
     end
     
     methods ( Static )
